@@ -1479,6 +1479,9 @@ Details:
 - **5a. The course admin or instructor cancels at the confirmation:**
   - 5a1. The system leaves the student's account unchanged.
   - 5a2. Use case ends.
+- **5b. The student has already been deactivated (for example, by another user since the details were displayed):**
+  - 5b1. The system alerts the course admin or instructor that this student is already deactivated and leaves the account unchanged.
+  - 5b2. Use case ends.
 
 **Priority:** Low
 **Frequency of Use:** Rare. Occurs occasionally when a student withdraws from a course section.
