@@ -836,6 +836,28 @@ public class EvaluationIntegrationTest extends AbstractIntegrationTest {
         assertThat(this.evaluationRepository.findById(1).orElseThrow().getPublicComment()).isEqualTo(publicCommentBefore);
     }
 
+    @Test
+    @DisplayName("BR-evaluate-active-teammates: after reactivation through the generic PUT, an evaluation of her is accepted")
+    void testDeactivatedTeammateIsEvaluableAgainAfterReactivation() throws Exception {
+        this.mockMvc.perform(put(this.baseUrl + "/students/5/deactivate").header(HttpHeaders.AUTHORIZATION, this.adminBingyangToken))
+                .andExpect(jsonPath("$.code").value(StatusCode.SUCCESS));
+
+        String reactivation = "{\"username\":\"e.hudson@abc.edu\",\"firstName\":\"Eric\",\"lastName\":\"Hudson\",\"email\":\"e.hudson@abc.edu\",\"enabled\":true}";
+        this.mockMvc.perform(put(this.baseUrl + "/students/5").contentType(MediaType.APPLICATION_JSON).content(reactivation).header(HttpHeaders.AUTHORIZATION, this.adminBingyangToken))
+                .andExpect(jsonPath("$.code").value(StatusCode.SUCCESS))
+                .andExpect(jsonPath("$.data.enabled").value(true));
+
+        LocalDate fixedDate = LocalDate.of(2023, 9, 15); // 2023-W37, so the previous week 2023-W36 is open
+        Clock fixedClock = Clock.fixed(fixedDate.atStartOfDay(ZoneId.systemDefault()).toInstant(), ZoneId.systemDefault());
+        given(this.clock.instant()).willReturn(fixedClock.instant());
+        given(this.clock.getZone()).willReturn(fixedClock.getZone());
+
+        PeerEvaluationDto peerEvaluationDto = new PeerEvaluationDto(null, "2023-W36", 4, "John Smith", 5, "Eric Hudson", sixRatings(null), 42.0, "Welcome back", "Glad to see you", null, null);
+        this.mockMvc.perform(post(this.baseUrl + "/evaluations").contentType(MediaType.APPLICATION_JSON).content(this.jsonMapper.writeValueAsString(peerEvaluationDto)).header(HttpHeaders.AUTHORIZATION, this.studentJohnToken))
+                .andExpect(jsonPath("$.flag").value(true))
+                .andExpect(jsonPath("$.code").value(StatusCode.SUCCESS));
+    }
+
     /** One rating per criterion of the seeded rubric; rating ids start at {@code firstRatingId} when given. */
     private static List<RatingDto> sixRatings(Integer firstRatingId) {
         return java.util.stream.IntStream.rangeClosed(1, 6)
