@@ -182,7 +182,9 @@ onMounted(async () => {
 async function loadStudents() {
   // On the back end, the page number starts from 0, so subtract 1 here
   const result: FindStudentByTeamIdResponse = await findStudentsByTeamId(teamId.value)
-  students.value = result.data
+  // A deactivated teammate cannot be evaluated (BR-evaluate-active-teammates). The server enforces this; leaving
+  // her out here keeps the form from sending requests it would refuse.
+  students.value = result.data.filter((student) => student.enabled !== false)
 }
 
 // Load criteria information
@@ -202,9 +204,16 @@ async function prepareStartingPeerEvaluations() {
     previousWeek.value
   )
 
+  // Evaluations of a teammate deactivated since they were submitted stay stored, but are frozen, so they are
+  // neither shown nor resubmitted (BR-evaluate-active-teammates)
+  const activeTeammateIds = new Set(students.value.map((student) => student.id))
+  const editableEvaluations = result.data.filter((evaluation) =>
+    activeTeammateIds.has(evaluation.evaluateeId)
+  )
+
   // If the student has already submitted evaluations for the current week, load them
-  if (result.data.length > 0) {
-    peerEvalutions.value = result.data
+  if (editableEvaluations.length > 0) {
+    peerEvalutions.value = editableEvaluations
     isNewSubmission = false
   } else {
     // If not, create a new set of evaluations
