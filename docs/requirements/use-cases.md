@@ -1473,7 +1473,7 @@ Details:
 7. Use case ends.
 
 **Extensions:**
-- **3a. The user is neither an instructor of the student's course section nor the course admin of its course:**
+- **3a. The course admin or instructor is neither an instructor of the student's course section nor the course admin of its course:**
   - 3a1. The system refuses the deactivation per BR-student-lifecycle and leaves the student's account unchanged.
   - 3a2. Use case ends.
 - **5a. The course admin or instructor cancels at the confirmation:**
