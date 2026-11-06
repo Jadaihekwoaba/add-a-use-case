@@ -1530,6 +1530,7 @@ Details:
 
 **Associated Information:**
 - The course admin or instructor shall be able to cancel the use case at any time prior to submitting it.
+- Until this use case is built, a deactivated student is reactivated through the student edit form (generic `PUT /students/{studentId}`), which may set the account active but never inactive; deactivation is only through UC-STU-deactivate-student: Deactivate a student.
 
 **Related Use Cases:** UC-STU-delete-student: Delete a student; UC-STU-deactivate-student: Deactivate a student
 **Assumptions:**
