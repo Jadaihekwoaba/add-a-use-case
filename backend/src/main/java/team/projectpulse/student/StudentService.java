@@ -116,9 +116,13 @@ public class StudentService {
 
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
-        // If the user is an admin, then the user can update all the fields
-        if (authentication.getAuthorities().stream().anyMatch(grantedAuthority -> grantedAuthority.getAuthority().equals("ROLE_instructor"))) {
-            oldStudent.setEnabled(update.isEnabled());
+        // An instructor may reactivate a student here, but not deactivate one. Deactivation has its own action,
+        // deactivateStudent, with a confirmation step and the BR-student-lifecycle guard. This path stays only as
+        // the interim reactivation path until UC-STU-reactivate-student is designed. The edit form sends
+        // enabled on every save, so a true-to-false change is ignored rather than refused (design/stu.md).
+        if (authentication.getAuthorities().stream().anyMatch(grantedAuthority -> grantedAuthority.getAuthority().equals("ROLE_instructor"))
+                && !oldStudent.isEnabled() && update.isEnabled()) {
+            oldStudent.setEnabled(true);
 //            oldStudent.setRoles(update.getRoles());
         }
 

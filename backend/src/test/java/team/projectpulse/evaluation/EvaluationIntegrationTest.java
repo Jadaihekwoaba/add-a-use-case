@@ -6,6 +6,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import team.projectpulse.AbstractIntegrationTest;
 import team.projectpulse.evaluation.dto.PeerEvaluationDto;
 import team.projectpulse.evaluation.dto.RatingDto;
+import team.projectpulse.student.StudentRepository;
 import team.projectpulse.system.StatusCode;
 import org.hamcrest.Matchers;
 import org.json.JSONObject;
@@ -58,6 +59,9 @@ public class EvaluationIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     EntityManager entityManager;
+
+    @Autowired
+    StudentRepository studentRepository;
 
     String adminBingyangToken;
 
@@ -787,6 +791,56 @@ public class EvaluationIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.flag").value(false))
                 .andExpect(jsonPath("$.code").value(StatusCode.INVALID_ARGUMENT))
                 .andExpect(jsonPath("$.message").value("The ratings are not valid. Please make sure all criteria in the rubric are rated and each criterion is rated only once."));
+    }
+
+    @Test
+    @DisplayName("BR-evaluate-active-teammates: submitting an evaluation of a deactivated teammate is refused")
+    void testStudentJohnCannotEvaluateDeactivatedTeammate() throws Exception {
+        this.studentRepository.findById(5).orElseThrow().setEnabled(false); // Eric is deactivated
+
+        LocalDate fixedDate = LocalDate.of(2023, 8, 8); // 2023-W32, so 2023-W31 is open
+        Clock fixedClock = Clock.fixed(fixedDate.atStartOfDay(ZoneId.systemDefault()).toInstant(), ZoneId.systemDefault());
+        given(this.clock.instant()).willReturn(fixedClock.instant());
+        given(this.clock.getZone()).willReturn(fixedClock.getZone());
+
+        long evaluationsBefore = this.evaluationRepository.count();
+        PeerEvaluationDto peerEvaluationDto = new PeerEvaluationDto(null, "2023-W31", 4, "John Smith", 5, "Eric Hudson", sixRatings(null), 41.0, "Good job", "Keep it up", null, null);
+        String json = this.jsonMapper.writeValueAsString(peerEvaluationDto);
+
+        // Evaluation 1 (John of Eric, 2023-W31) already exists, so this also proves the active check runs first
+        this.mockMvc.perform(post(this.baseUrl + "/evaluations").contentType(MediaType.APPLICATION_JSON).content(json).accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.studentJohnToken))
+                .andExpect(jsonPath("$.flag").value(false))
+                .andExpect(jsonPath("$.code").value(StatusCode.INVALID_ARGUMENT))
+                .andExpect(jsonPath("$.message").value("This teammate's account is deactivated, so the teammate cannot be evaluated."));
+        assertThat(this.evaluationRepository.count()).isEqualTo(evaluationsBefore);
+    }
+
+    @Test
+    @DisplayName("BR-evaluate-active-teammates: editing an evaluation of a deactivated teammate is refused")
+    void testStudentJohnCannotEditEvaluationOfDeactivatedTeammate() throws Exception {
+        this.studentRepository.findById(5).orElseThrow().setEnabled(false); // Eric is deactivated
+
+        LocalDate fixedDate = LocalDate.of(2023, 8, 8); // 2023-W32, so evaluation 1 (2023-W31) is still in its window
+        Clock fixedClock = Clock.fixed(fixedDate.atStartOfDay(ZoneId.systemDefault()).toInstant(), ZoneId.systemDefault());
+        given(this.clock.instant()).willReturn(fixedClock.instant());
+        given(this.clock.getZone()).willReturn(fixedClock.getZone());
+
+        String publicCommentBefore = this.evaluationRepository.findById(1).orElseThrow().getPublicComment();
+        PeerEvaluationDto peerEvaluationDto = new PeerEvaluationDto(1, "2023-W31", 4, "John Smith", 5, "Eric Hudson", sixRatings(1), 41.0, "Changed", "Changed", null, null);
+        String json = this.jsonMapper.writeValueAsString(peerEvaluationDto);
+
+        this.mockMvc.perform(put(this.baseUrl + "/evaluations/1").contentType(MediaType.APPLICATION_JSON).content(json).accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.studentJohnToken))
+                .andExpect(jsonPath("$.flag").value(false))
+                .andExpect(jsonPath("$.code").value(StatusCode.INVALID_ARGUMENT))
+                .andExpect(jsonPath("$.message").value("This teammate's account is deactivated, so the teammate cannot be evaluated."));
+        assertThat(this.evaluationRepository.findById(1).orElseThrow().getPublicComment()).isEqualTo(publicCommentBefore);
+    }
+
+    /** One rating per criterion of the seeded rubric; rating ids start at {@code firstRatingId} when given. */
+    private static List<RatingDto> sixRatings(Integer firstRatingId) {
+        return java.util.stream.IntStream.rangeClosed(1, 6)
+                .mapToObj(criterionId -> new RatingDto(firstRatingId == null ? null : firstRatingId + criterionId - 1, criterionId, 7.0))
+                .toList();
     }
 
 }
