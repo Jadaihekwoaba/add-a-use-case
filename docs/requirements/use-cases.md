@@ -1482,6 +1482,9 @@ Details:
 - **5b. The student has already been deactivated (for example, by another user since the details were displayed):**
   - 5b1. The system alerts the course admin or instructor that this student is already deactivated and leaves the account unchanged.
   - 5b2. Use case ends.
+- **5c. The student no longer exists (for example, deleted through UC-STU-delete-student: Delete a student since the details were displayed):**
+  - 5c1. The system alerts the course admin or instructor that this student can no longer be deactivated and refreshes the list of students.
+  - 5c2. Use case ends.
 
 **Priority:** Low
 **Frequency of Use:** Rare. Occurs occasionally when a student withdraws from a course section.
