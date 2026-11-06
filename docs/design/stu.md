@@ -58,17 +58,18 @@ classDiagram
 **Backend**
 - `student/StudentController.java`: adds `deactivateStudent`.
 - `student/StudentService.java`: adds `deactivateStudent`. `updateStudent` now ignores an `enabled` change from true to false.
-- `student/StudentSecurityService.java`: adds `canManageStudentLifecycle`. It is true when the caller is in the student's `section.getInstructors()` (the existing `isCurrentUserInstructorOfStudentSection`) or is `section.getCourse().getCourseAdmin()`. It is never true for the student herself.
+- `student/StudentSecurityService.java`: adds `canManageStudentLifecycle`. It is true when the caller's `UserUtils.getUserId()` matches, by id, a member of the student's `section.getInstructors()` (the existing `isCurrentUserInstructorOfStudentSection`) or `section.getCourse().getCourseAdmin()`. It is never true for the student herself. An unknown student, or a null course section, course, or course admin, returns `false` and never throws.
 - `security/authorizationmanagers/StudentLifecycleAuthorizationManager.java`: new, a thin wrapper over that method that reads `studentId`. It is bound in `security/SecurityConfiguration.java`.
-- `security/ActiveAccountJwtAuthenticationConverter.java`: new. It wraps the existing `jwtAuthenticationConverter()` bean and is registered on `oauth2ResourceServer().jwt()`.
-- `system/exception/StudentAlreadyDeactivatedException.java`: new. `ExceptionHandlerAdvice` maps it to `StatusCode.CONFLICT`.
+- `security/ActiveAccountJwtAuthenticationConverter.java`: new. It wraps the existing `jwtAuthenticationConverter()` bean and is registered on `oauth2ResourceServer().jwt()`. It reads the `userId` claim the same way `UserUtils.getUserId` does (Integer or Long), looks the user up with `UserRepository.findById`, and throws `DisabledException` when the user is missing or disabled. `DisabledException` is an `AuthenticationException`, so the bearer-token entry point answers 401. The filter runs on any request that carries a bearer header, so a stale token is refused even on a `permitAll` route; the SPA then logs out, which is the intended effect.
+- `system/exception/StudentAlreadyDeactivatedException.java`: new. `ExceptionHandlerAdvice` maps it to HTTP 409 with `StatusCode.CONFLICT`, following the existing `SectionLockRequiredException` handler.
 - `evaluation/EvaluationService.java`: changed, as shown in the class diagram.
 
 **Frontend**
-- `apis/student/index.ts`: adds `deactivateStudent(id)`.
-- `pages/students/Students.vue`: an enabled row gets a Deactivate operation, behind a confirmation that states the consequences from the use case's Associated Information.
-- `pages/students/EditStudentForm.vue`: the Status control can only be switched to Enabled.
-- `pages/evaluations/SubmitTeamsEvaluations.vue`: leaves out teammates whose `enabled` is false. The server enforces the rule; this only keeps the form honest.
+- `utils/request.ts`: adds a per-request `handledStatuses` option. The response interceptor skips its global toast and redirect for the statuses listed there and only rejects the promise, so the caller handles them.
+- `apis/student/index.ts`: adds `deactivateStudent(id)`, which passes `handledStatuses: [403, 404, 409]`.
+- `pages/students/Students.vue`: every enabled row the list returns gets a Deactivate operation, behind an `ElMessageBox.confirm`. This row action is how steps 2–3 reach the student; no separate details page is needed. The dialog states every consequence in the use case's Associated Information: she can no longer log in or submit weekly activity reports or peer evaluations; her account, her submitted work and her team are kept; teammates cannot evaluate her while she is deactivated; she can be reactivated later; and this is not a delete.
+- `pages/students/EditStudentForm.vue`: for an enabled student the Status control is read-only; for a deactivated one it can be switched to Enabled.
+- `pages/evaluations/SubmitTeamsEvaluations.vue`: leaves out teammates whose `enabled` is false, both when submitting and when updating. The form sends one request per evaluatee, so leaving her out never fails her teammates' other evaluations. Evaluations of her submitted before she was deactivated stay stored; they are just no longer shown or resubmitted. The server enforces the rule; this only keeps the form honest.
 
 ## Sequence
 
@@ -102,7 +103,7 @@ sequenceDiagram
     end
 ```
 
-On a 403 or 404 the view shows "this student can no longer be deactivated" and reloads the list (5c). On a 409 it shows "already deactivated" (5b).
+Because the call opts out of the global handling for 403, 404 and 409, the view handles all three itself. On a 403 or 404 it shows "This student can no longer be deactivated" and reloads the list (3a and 5c). On a 409 it shows "This student is already deactivated" and reloads the list (5b). Every other error keeps the global handling.
 
 ### A deactivated student's next request (FR-SEC-active-account)
 
@@ -142,7 +143,9 @@ A fresh login is already refused: `MyUserPrincipal.isEnabled` raises `DisabledEx
   - Rejected: shorter-lived tokens. They still leave a window.
   - The check also covers instructors, so UC-INS-deactivate-instructor inherits it.
 - **Peer-evaluation enforcement ships with this use case**, not later with EVA. Otherwise the first deactivation would break BR-evaluate-active-teammates. `evaluation` reads `Student.isEnabled()`, which is a foundation read that `MNT-feature-locality` permits.
-- **The student stays on her team.** Team membership changes only under BR-team-admin-only. She already stops owing reports and evaluations: BR-submission-owed counts only active accounts, and `notification/SubmissionStatusService` already filters on `isEnabled`.
+- **Students.vue handles these errors itself, using a per-request opt-out in `request.ts`.** We rejected letting the global interceptor redirect to the forbidden or not-found page: 5c requires the user to stay on the list and see it refreshed. We also rejected special-casing this URL inside the interceptor, which would hide feature logic in shared plumbing. The opt-out leaves every other caller unchanged.
+- **The course-section report decides what "evaluated" means.** It lists a deactivated student for a week only when that week has at least one evaluation with her as the evaluatee and a teammate other than herself as the evaluator. This follows BR-evaluate-active-teammates' "at least one teammate". Only the course-section report changes: the per-student report (UC-EVA-student-evaluation-report) shows whatever evaluations of her exist.
+- **The student stays on her team.** Team membership changes only under BR-team-admin-only. Owed submissions need no change. `notification/SubmissionStatusService.findOwedItems` already keeps only active students, both as students who owe submissions and as the teammates each of them must evaluate. So a deactivated student owes nothing, and her teammates stop owing an evaluation of her.
 
 ## Data model
 
@@ -171,3 +174,6 @@ There is no schema change. `enabled` already exists on `PeerEvaluationUser` (see
 - The per-request `enabled` read adds one database read to every authenticated request. That is fine at the scale `SCA-cohort-load` describes; add caching only if a `PER-*` threshold is at risk.
 - The use case doesn't say whether the student should be emailed when she is deactivated (reactivation does email her), so this design doesn't email her.
 - Out of scope: the authorization on `DELETE /students/{studentId}` does not match BR-student-lifecycle (OI-65).
+- The interim reactivation path keeps the generic PUT's existing guard (`UserOwnershipAuthorizationManager`). That guard admits an instructor of the student's course section but not an unassigned course admin, so until UC-STU-reactivate-student is designed, an unassigned course admin cannot reactivate.
+- The tests need fixtures that may not exist in `DataInitializer`: an unassigned course admin, an instructor of another course section, and teammates with evaluations in a week whose submission window is open under the dev clock. `/implement` adds any that are missing.
+- 5a is an E2E test in the existing Cypress suite (`frontend/cypress/e2e`), since the frontend has no component-test runner.
