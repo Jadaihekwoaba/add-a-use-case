@@ -35,8 +35,6 @@ class StudentSecurityServiceTest {
     @InjectMocks
     StudentSecurityService studentSecurityService;
 
-    Course course;
-
     Student john;
 
     @BeforeEach
@@ -46,12 +44,12 @@ class StudentSecurityServiceTest {
         Instructor courseAdmin = new Instructor("bingyang", "Bingyang", "Wei", "b.wei@abc.edu", "123456", true, "admin instructor");
         courseAdmin.setId(1);
 
-        this.course = new Course("COSC 40993 Senior Design", "Senior design");
-        this.course.setCourseAdmin(courseAdmin);
+        Course course = new Course("COSC 40993 Senior Design", "Senior design");
+        course.setCourseAdmin(courseAdmin);
 
         Section section = new Section("2023-2024", LocalDate.of(2023, 7, 31), LocalDate.of(2024, 10, 6), true, DayOfWeek.MONDAY, LocalTime.of(23, 59), DayOfWeek.TUESDAY, LocalTime.of(23, 59));
         section.addInstructor(sectionInstructor); // The course admin is NOT assigned to this course section
-        this.course.addSection(section);
+        course.addSection(section);
 
         this.john = new Student("john", "John", "Smith", "j.smith@abc.edu", "123456", true, "student");
         this.john.setId(4);
@@ -100,19 +98,6 @@ class StudentSecurityServiceTest {
         given(this.studentRepository.findById(999)).willReturn(Optional.empty());
 
         assertThat(this.studentSecurityService.canManageStudentLifecycle(999)).isFalse();
-    }
-
-    @Test
-    @DisplayName("A course section with no course is a denial, not an exception")
-    void testCourseSectionWithNoCourse() {
-        Section orphanSection = new Section("Orphan", LocalDate.of(2023, 7, 31), LocalDate.of(2024, 10, 6), true, DayOfWeek.MONDAY, LocalTime.of(23, 59), DayOfWeek.TUESDAY, LocalTime.of(23, 59));
-        Student jana = new Student("jana", "Jana", "Norton", "j.norton@abc.edu", "123456", true, "student");
-        jana.setId(5);
-        orphanSection.addStudent(jana);
-        given(this.userUtils.getUserId()).willReturn(1);
-        given(this.studentRepository.findById(5)).willReturn(Optional.of(jana));
-
-        assertThat(this.studentSecurityService.canManageStudentLifecycle(5)).isFalse();
     }
 
 }

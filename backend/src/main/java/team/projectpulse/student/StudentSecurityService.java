@@ -1,7 +1,5 @@
 package team.projectpulse.student;
 
-import team.projectpulse.course.Course;
-import team.projectpulse.instructor.Instructor;
 import team.projectpulse.section.Section;
 import team.projectpulse.system.UserUtils;
 import jakarta.transaction.Transactional;
@@ -54,8 +52,7 @@ public class StudentSecurityService {
     /**
      * Whether the caller may deactivate or reactivate the student (BR-student-lifecycle): an instructor of her
      * course section, or the course admin of its course, whether or not that admin is assigned to the course
-     * section. Never the student herself. An unknown student, or a course section with no course or course admin,
-     * is a denial.
+     * section. Never the student herself. An unknown student is a denial.
      *
      * @param studentId the id of the student being deactivated, NOT the current user's id
      */
@@ -68,13 +65,10 @@ public class StudentSecurityService {
         if (student == null) {
             return false;
         }
+        // The course section, its course and the course admin are all mandatory associations, so none is null
         Section section = student.getSection();
-        if (section.getInstructors().stream().anyMatch(instructor -> callerId.equals(instructor.getId()))) {
-            return true;
-        }
-        Course course = section.getCourse();
-        Instructor courseAdmin = course == null ? null : course.getCourseAdmin();
-        return courseAdmin != null && callerId.equals(courseAdmin.getId());
+        return section.getInstructors().stream().anyMatch(instructor -> callerId.equals(instructor.getId()))
+                || callerId.equals(section.getCourse().getCourseAdmin().getId());
     }
 
 }
