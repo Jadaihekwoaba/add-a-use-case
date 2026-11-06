@@ -5,6 +5,7 @@ import type {
   SearchStudentByCriteriaResponse,
   CreateStudentResponse,
   DeleteStudentResponse,
+  DeactivateStudentResponse,
   FindStudentByIdResponse,
   UpdateStudentResponse,
   Student,
@@ -36,6 +37,13 @@ export const updateStudent = (updatedStudent: Student) =>
     `${API.STUDENTS_ENDPOINT}/${updatedStudent.id}`,
     updatedStudent
   )
+
+// The Students page handles 403, 404 and 409 itself (UC-STU-deactivate-student extensions 3a, 5b and 5c), so they
+// skip the global toast and redirect.
+export const deactivateStudent = (id: number) =>
+  request.put<any, DeactivateStudentResponse>(`${API.STUDENTS_ENDPOINT}/${id}/deactivate`, null, {
+    handledStatuses: [403, 404, 409]
+  })
 
 export const deleteStudent = (id: number) =>
   request.delete<any, DeleteStudentResponse>(`${API.STUDENTS_ENDPOINT}/${id}`)

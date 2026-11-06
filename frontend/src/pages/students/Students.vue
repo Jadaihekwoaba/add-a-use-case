@@ -39,7 +39,7 @@
           <el-tag type="danger" v-else>Disabled</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="Operations" width="120">
+      <el-table-column label="Operations" width="180">
         <template #default="{ row }">
           <el-button
             icon="Edit"
@@ -48,6 +48,15 @@
             type="primary"
             @click.stop="showEditStudentDialog(row)"
           ></el-button>
+          <el-button
+            v-if="row.enabled"
+            plain
+            size="small"
+            type="danger"
+            class="deactivate-student-button"
+            @click.stop="confirmDeactivation(row)"
+            >Deactivate</el-button
+          >
         </template>
       </el-table-column>
       <template #empty>
@@ -77,8 +86,9 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import { searchStudents } from '@/apis/student'
+import { h, onMounted, ref } from 'vue'
+import axios from 'axios'
+import { deactivateStudent, searchStudents } from '@/apis/student'
 import type {
   SearchStudentByCriteriaResponse,
   Student,
@@ -86,7 +96,7 @@ import type {
 } from '@/apis/student/types'
 import { useSettingsStore } from '@/stores/settings'
 import EditStudentForm from './EditStudentForm.vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 const searchCriteria = ref<StudentSearchCriteria>({
   sectionId: NaN,
@@ -161,6 +171,47 @@ function showEditStudentDialog(student: Student) {
 
 function closeDialog() {
   dialogVisible.value = false
+  loadStudents()
+}
+
+// UC-STU-deactivate-student, steps 3-6: warn about every consequence, ask for confirmation, then deactivate
+async function confirmDeactivation(student: Student) {
+  const name = `${student.firstName} ${student.lastName}`
+  try {
+    await ElMessageBox.confirm(
+      h('div', [
+        h('p', `Deactivate ${name}? This student:`),
+        h('ul', [
+          h(
+            'li',
+            'will no longer be able to log in or submit weekly activity reports and peer evaluations;'
+          ),
+          h('li', 'keeps the account, all submitted work, and the team;'),
+          h('li', 'cannot be evaluated by teammates while deactivated;'),
+          h('li', 'can be reactivated later.')
+        ]),
+        h('p', 'This is not a delete: nothing is removed from the system.')
+      ]),
+      'Deactivate a student',
+      { type: 'warning', confirmButtonText: 'Deactivate', cancelButtonText: 'Cancel' }
+    )
+  } catch {
+    return // 5a: cancelled at the confirmation, so no request is sent
+  }
+
+  try {
+    await deactivateStudent(student.id as number)
+    ElMessage.success(`${name} has been deactivated.`)
+  } catch (error) {
+    const status = axios.isAxiosError(error) ? error.response?.status : undefined
+    if (status === 409) {
+      ElMessage.warning('This student is already deactivated.') // 5b
+    } else if (status === 403 || status === 404) {
+      ElMessage.warning('This student can no longer be deactivated.') // 3a, 5c
+    } else {
+      throw error // Every other error was already handled by the global interceptor
+    }
+  }
   loadStudents()
 }
 
