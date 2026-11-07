@@ -186,7 +186,11 @@ public class EvaluationService {
     public PeerEvaluationAverage getPeerEvaluationAverage(String week, Student student) {
         // Get all evaluations for the student in the given week
         List<PeerEvaluation> evaluations = this.evaluationRepository.findByWeekAndEvaluateeId(week, student.getId());
+        return averageOf(week, student, evaluations);
+    }
 
+    /** Averages evaluations of the student for the week that the caller has already fetched. */
+    private PeerEvaluationAverage averageOf(String week, Student student, List<PeerEvaluation> evaluations) {
         PeerEvaluationAverage peerEvaluationAverage = new PeerEvaluationAverage();
 
         peerEvaluationAverage.setStudentId(student.getId());
@@ -239,13 +243,15 @@ public class EvaluationService {
         // Get all students in the section
         List<Student> students = this.studentRepository.findBySectionSectionId(sectionId).stream()
                 .filter(student -> student.getTeam() != null)
-                .filter(student -> student.isEnabled() || wasEvaluatedByATeammate(student, week))
                 .collect(Collectors.toList());
 
         // For each student, compute her average total score, collect all public comments and private comments, and compute rating averages for each criterion.
+        // Her evaluations are fetched once and serve both the deactivated-student filter and the average.
         students.forEach(student -> {
-            PeerEvaluationAverage peerEvaluationAverage = getPeerEvaluationAverage(week, student);
-            report.getPeerEvaluationAverages().add(peerEvaluationAverage);
+            List<PeerEvaluation> evaluations = this.evaluationRepository.findByWeekAndEvaluateeId(week, student.getId());
+            if (student.isEnabled() || wasEvaluatedByATeammate(student, evaluations)) {
+                report.getPeerEvaluationAverages().add(averageOf(week, student, evaluations));
+            }
         });
 
         // Who has not submitted is not part of this report: it is BR-submission-owed, which the notification slice
@@ -261,8 +267,8 @@ public class EvaluationService {
      * report lists a deactivated student only for such a week (BR-evaluate-active-teammates); a self-evaluation
      * alone does not count.
      */
-    private boolean wasEvaluatedByATeammate(Student student, String week) {
-        return this.evaluationRepository.findByWeekAndEvaluateeId(week, student.getId()).stream()
+    private boolean wasEvaluatedByATeammate(Student student, List<PeerEvaluation> evaluationsOfHerThatWeek) {
+        return evaluationsOfHerThatWeek.stream()
                 .anyMatch(evaluation -> !student.getId().equals(evaluation.getEvaluator().getId()));
     }
 

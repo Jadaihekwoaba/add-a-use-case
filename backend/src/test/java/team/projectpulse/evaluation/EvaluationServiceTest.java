@@ -663,6 +663,9 @@ class EvaluationServiceTest {
         assertThat(report.getPeerEvaluationAverages())
                 .extracting(PeerEvaluationAverage::getStudentId)
                 .containsExactly(3, 4, 5, 7);
+        // Each student's evaluations are fetched once, whether or not she is deactivated
+        verify(this.evaluationRepository, times(1)).findByWeekAndEvaluateeId("2023-W31", 4);
+        verify(this.evaluationRepository, times(1)).findByWeekAndEvaluateeId("2023-W31", 6);
     }
 
     @Test
