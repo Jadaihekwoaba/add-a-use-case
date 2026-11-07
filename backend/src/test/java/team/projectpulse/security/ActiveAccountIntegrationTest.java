@@ -8,10 +8,15 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.security.oauth2.jwt.JwtClaimsSet;
+import org.springframework.security.oauth2.jwt.JwtEncoder;
+import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import team.projectpulse.AbstractIntegrationTest;
 import team.projectpulse.instructor.InstructorRepository;
 import team.projectpulse.student.StudentRepository;
 import team.projectpulse.system.StatusCode;
+
+import java.time.Instant;
 
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -34,6 +39,9 @@ class ActiveAccountIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     InstructorRepository instructorRepository;
+
+    @Autowired
+    JwtEncoder jwtEncoder;
 
     @Value("${api.endpoint.base-url}")
     String baseUrl;
@@ -80,10 +88,16 @@ class ActiveAccountIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     @DisplayName("A token whose account no longer exists is refused with 401")
-    void testDeletedAccountTokenIsRefused() throws Exception {
-        this.studentRepository.deleteById(4);
+    void testTokenOfMissingAccountIsRefused() throws Exception {
+        // A validly signed token for a user id that names no account, as if the account had been deleted
+        Instant now = Instant.now();
+        JwtClaimsSet claims = JwtClaimsSet.builder()
+                .issuer("self").issuedAt(now).expiresAt(now.plusSeconds(3600))
+                .subject("ghost@abc.edu").claim("userId", 9999).claim("authorities", "ROLE_student")
+                .build();
+        String ghostToken = "Bearer " + this.jwtEncoder.encode(JwtEncoderParameters.from(claims)).getTokenValue();
 
-        this.mockMvc.perform(get(this.baseUrl + "/students/teams/1").header(HttpHeaders.AUTHORIZATION, this.studentJohnToken))
+        this.mockMvc.perform(get(this.baseUrl + "/students/teams/1").header(HttpHeaders.AUTHORIZATION, ghostToken))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value(StatusCode.UNAUTHORIZED));
     }
