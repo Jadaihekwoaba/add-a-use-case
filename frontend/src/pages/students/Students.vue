@@ -208,9 +208,9 @@ async function confirmDeactivation(student: Student) {
       ElMessage.warning('This student is already deactivated.') // 5b
     } else if (status === 403 || status === 404) {
       ElMessage.warning('This student can no longer be deactivated.') // 3a, 5c
-    } else {
-      throw error // Every other error was already handled by the global interceptor
     }
+    // Every other error was already reported by the global interceptor. It is not re-thrown: the list is
+    // reloaded either way, because the server may have committed before the response failed.
   }
   loadStudents()
 }

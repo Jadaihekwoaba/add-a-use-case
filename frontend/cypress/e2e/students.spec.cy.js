@@ -25,4 +25,22 @@ describe('Deactivate a student', () => {
     cy.url().should('include', '/students') // The row click did not navigate to the dashboard
     cy.get('@johnRow').contains('Enabled').should('be.visible')
   })
+
+  it('an unexpected server error is reported, does not escape uncaught, and the list is reloaded', () => {
+    cy.intercept('PUT', '**/students/*/deactivate', {
+      statusCode: 500,
+      body: { flag: false, code: 500, message: 'A server internal error occurs.', data: null }
+    }).as('deactivate')
+    cy.intercept('POST', '**/students/search*').as('search')
+
+    cy.visit('/students')
+    cy.wait('@search')
+    cy.contains('.el-table__row', 'j.smith@abc.edu').find('.deactivate-student-button').click()
+    cy.get('.el-message-box').contains('button', 'Deactivate').click()
+
+    cy.wait('@deactivate')
+    cy.contains('A server internal error occurs.').should('be.visible') // the global interceptor's toast
+    cy.wait('@search') // reloaded after the failure
+    cy.url().should('include', '/students')
+  })
 })
