@@ -204,33 +204,32 @@ async function prepareStartingPeerEvaluations() {
     previousWeek.value
   )
 
-  // Evaluations of a teammate deactivated since they were submitted stay stored, but are frozen, so they are
-  // neither shown nor resubmitted (BR-evaluate-active-teammates)
-  const activeTeammateIds = new Set(students.value.map((student) => student.id))
-  const editableEvaluations = result.data.filter((evaluation) =>
-    activeTeammateIds.has(evaluation.evaluateeId)
+  // One row per active teammate: her stored evaluation if there is one, a fresh one otherwise. A teammate can have
+  // none while others do, for example one reactivated after the rest were submitted, and she is evaluable again
+  // from her reactivation onward. Evaluations of a teammate deactivated since they were submitted stay stored but
+  // are frozen, so they are neither shown nor resubmitted (BR-evaluate-active-teammates).
+  const storedByEvaluateeId = new Map(
+    result.data.map((evaluation) => [evaluation.evaluateeId, evaluation])
   )
+  peerEvalutions.value = students.value.map(
+    (student) => storedByEvaluateeId.get(student.id as number) ?? newPeerEvaluation(student)
+  )
+  isNewSubmission = !peerEvalutions.value.some((evaluation) => evaluation.evaluationId)
+}
 
-  // If the student has already submitted evaluations for the current week, load them
-  if (editableEvaluations.length > 0) {
-    peerEvalutions.value = editableEvaluations
-    isNewSubmission = false
-  } else {
-    // If not, create a new set of evaluations
-    isNewSubmission = true
-    peerEvalutions.value = students.value.map((student) => ({
-      week: previousWeek.value,
-      evaluatorId: (userInfoStore.userInfo as Student).id as number,
-      evaluateeId: student.id as number,
-      evaluateeName: `${student.firstName} ${student.lastName}`,
-      ratings: criteria.value.map((criterion) => ({
-        criterionId: criterion.criterionId as number,
-        criterion: criterion.criterion,
-        actualScore: 10 // Default score, can be changed by the user
-      })),
-      publicComment: '',
-      privateComment: ''
-    }))
+function newPeerEvaluation(student: Student): PeerEvaluation {
+  return {
+    week: previousWeek.value,
+    evaluatorId: (userInfoStore.userInfo as Student).id as number,
+    evaluateeId: student.id as number,
+    evaluateeName: `${student.firstName} ${student.lastName}`,
+    ratings: criteria.value.map((criterion) => ({
+      criterionId: criterion.criterionId as number,
+      criterion: criterion.criterion,
+      actualScore: 10 // Default score, can be changed by the user
+    })),
+    publicComment: '',
+    privateComment: ''
   }
 }
 
@@ -256,8 +255,12 @@ async function submitPeerEvaluations() {
 // Update peer evaluations
 async function updatePeerEvaluations() {
   if (peerEvalutions.value) {
+    // A row with no stored evaluation yet (a teammate reactivated since the others were submitted) is created
     const submitPromises = peerEvalutions.value.map(async (evaluation) => {
-      const result: UpdatePeerEvaluationResponse = await updateEvaluation(evaluation)
+      const result: UpdatePeerEvaluationResponse | SubmitPeerEvaluationResponse =
+        evaluation.evaluationId
+          ? await updateEvaluation(evaluation)
+          : await submitEvaluation(evaluation)
       return result.data
     })
 
