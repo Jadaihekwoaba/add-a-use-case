@@ -4,6 +4,7 @@ import team.projectpulse.section.Section;
 import team.projectpulse.section.SectionRepository;
 import team.projectpulse.system.UserUtils;
 import team.projectpulse.system.exception.ObjectNotFoundException;
+import team.projectpulse.system.exception.StudentAlreadyDeactivatedException;
 import team.projectpulse.user.userinvitation.UserInvitationService;
 import jakarta.transaction.Transactional;
 import org.springframework.data.domain.Page;
@@ -116,13 +117,34 @@ public class StudentService {
 
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
-        // If the user is an admin, then the user can update all the fields
-        if (authentication.getAuthorities().stream().anyMatch(grantedAuthority -> grantedAuthority.getAuthority().equals("ROLE_instructor"))) {
-            oldStudent.setEnabled(update.isEnabled());
+        // An instructor may reactivate a student here, but not deactivate one. Deactivation has its own action,
+        // deactivateStudent, with a confirmation step and the BR-student-lifecycle guard. This path stays only as
+        // the interim reactivation path until UC-STU-reactivate-student is designed. The edit form sends
+        // enabled on every save, so a true-to-false change is ignored rather than refused (design/stu.md).
+        if (authentication.getAuthorities().stream().anyMatch(grantedAuthority -> grantedAuthority.getAuthority().equals("ROLE_instructor"))
+                && !oldStudent.isEnabled() && update.isEnabled()) {
+            oldStudent.setEnabled(true);
 //            oldStudent.setRoles(update.getRoles());
         }
 
         return this.studentRepository.save(oldStudent);
+    }
+
+    /**
+     * Deactivates a student (UC-STU-deactivate-student). Her account, her submitted work and her team membership
+     * are kept (BR-student-lifecycle). The route guard has already checked that the caller may do this.
+     *
+     * @throws ObjectNotFoundException             if the student was deleted after the guard ran
+     * @throws StudentAlreadyDeactivatedException if she is already deactivated (extension 5b)
+     */
+    public Student deactivateStudent(Integer studentId) {
+        Student student = this.studentRepository.findById(studentId)
+                .orElseThrow(() -> new ObjectNotFoundException("student", studentId));
+        if (!student.isEnabled()) {
+            throw new StudentAlreadyDeactivatedException();
+        }
+        student.setEnabled(false);
+        return this.studentRepository.save(student);
     }
 
     public void deleteStudent(Integer studentId) {

@@ -10,6 +10,16 @@ const devBaseURL = import.meta.env.VITE_SERVER_URL as string | undefined
 const baseURL = import.meta.env.DEV ? devBaseURL : '/api/v1'
 const requestInstance = axios.create({ baseURL, timeout: 10_000 }) // 10 seconds
 
+declare module 'axios' {
+  interface AxiosRequestConfig {
+    /**
+     * HTTP statuses the caller handles itself. For these, the response interceptor skips its global toast and
+     * redirect and only rejects the promise. Every other status keeps the global handling.
+     */
+    handledStatuses?: number[]
+  }
+}
+
 // Simple toast cooldown (prevents spam on cascading failures)
 let lastToastAt = 0
 
@@ -106,6 +116,12 @@ requestInstance.interceptors.response.use(
     }
 
     const { status, data } = error.response
+
+    // The caller opted out of the global handling for this status, so leave it to the caller
+    if (error.config?.handledStatuses?.includes(status)) {
+      return Promise.reject(error)
+    }
+
     const msg = (data && (data.message || data.error)) || `HTTP ${status}: Something went wrong`
 
     // Avoid toasting on 401 (we redirect instead)

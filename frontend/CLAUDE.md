@@ -71,6 +71,7 @@ export const createFoo = (foo: Foo) =>
 - Every call goes through this shared instance via an `src/apis/<feature>/` module; never call `axios` or `fetch` directly. The contract is normative in the [architecture-of-record's Client ↔ API contract](../docs/design/architectural-design.md#architectural-conventions).
 - It injects the Bearer token, and its response interceptor unwraps `response.data` (you get the `Result` object directly, not `AxiosResponse`)
 - A `401` clears the token/user stores and redirects to login; a `403` or `404` routes to the forbidden or not-found page
+- A call can pass `handledStatuses: [...]` to skip the global toast and redirect for those statuses and handle them in the view (e.g. `apis/student` `deactivateStudent`)
 - Other errors show `ElMessage.error()` toasts (with debouncing)
 
 ### Styling
